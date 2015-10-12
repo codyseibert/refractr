@@ -1,5 +1,5 @@
 $(document).ready(function() {
-  var $svg, LightSource, Line, Medium, Point, drawIntersection, isIntersecting, lineA, lineB, lineC, svgEl;
+  var $svg, LightSource, Line, Medium, Point, drawIntersection, elem, extendLine, i, isIntersecting, len, lineA, medium, ref, refractr, sideA, sideB, sideC, sideD, svgEl;
   $svg = $('#svg');
   svgEl = function(tag) {
     return $(document.createElementNS('http://www.w3.org/2000/svg', tag));
@@ -21,31 +21,33 @@ $(document).ready(function() {
     s = (-s1_y * (p0_x - p2_x) + s1_x * (p0_y - p2_y)) / (-s2_x * s1_y + s1_x * s2_y);
     t = (s2_x * (p0_y - p2_y) - s2_y * (p0_x - p2_x)) / (-s2_x * s1_y + s1_x * s2_y);
     if (s >= 0 && s <= 1 && t >= 0 && t <= 1) {
-      return {
-        x: p0_x + (t * s1_x),
-        y: p0_y + (t * s1_y)
-      };
+      return new Point(p0_x + (t * s1_x), p0_y + (t * s1_y));
     } else {
       return void 0;
     }
   };
   drawIntersection = function(lineA, lineB) {
-    var intersect, intersection;
+    var intersection;
     intersection = isIntersecting(lineA, lineB);
     if (intersection != null) {
-      intersect = new Point(intersection.x, intersection.y);
-      return $svg.append(intersect.$);
+      return $svg.append(intersection.$);
     }
   };
   Line = (function() {
-    function Line(p1, p2, color) {
-      this.p1 = p1;
+    function Line(p11, p2, color) {
+      this.p1 = p11;
       this.p2 = p2;
       if (color == null) {
         color = 'yellow';
       }
-      this.$ = svgEl('line').addClass('line').attr('stroke', color).attr('x1', this.p1.x).attr('y1', this.p1.y).attr('x2', this.p2.x).attr('y2', this.p2.y);
+      this.$ = svgEl('line').addClass('line').attr('stroke', color);
+      this.refresh();
     }
+
+    Line.prototype.refresh = function() {
+      this.$.attr('x1', this.p1.x).attr('y1', this.p1.y).attr('x2', this.p2.x).attr('y2', this.p2.y);
+      return this.angle = Math.atan2(this.p1.y - this.p2.y, this.p1.x - this.p2.x);
+    };
 
     return Line;
 
@@ -61,8 +63,9 @@ $(document).ready(function() {
 
   })();
   Medium = (function() {
-    function Medium(coef) {
+    function Medium(coef, sides) {
       this.coef = coef;
+      this.sides = sides;
     }
 
     return Medium;
@@ -80,12 +83,48 @@ $(document).ready(function() {
 
   })();
   lineA = new Line(new Point(100, 100), new Point(355, 300));
-  lineB = new Line(new Point(100, 200), new Point(455, 100), 'red');
-  lineC = new Line(new Point(100, 300), new Point(355, 100), 'blue');
-  $svg.append(lineA.$);
-  $svg.append(lineB.$);
-  $svg.append(lineC.$);
-  drawIntersection(lineA, lineB);
-  drawIntersection(lineA, lineC);
-  return drawIntersection(lineC, lineB);
+  sideA = new Line(new Point(200, 200), new Point(300, 200), 'cyan');
+  sideB = new Line(new Point(300, 200), new Point(300, 300), 'cyan');
+  sideC = new Line(new Point(300, 300), new Point(200, 300), 'cyan');
+  sideD = new Line(new Point(200, 300), new Point(200, 200), 'cyan');
+  medium = new Medium(1.5, [sideA, sideB, sideC, sideD]);
+  ref = [lineA, sideA, sideB, sideC, sideD];
+  for (i = 0, len = ref.length; i < len; i++) {
+    elem = ref[i];
+    $svg.append(elem.$);
+  }
+  refractr = function(line, medium) {
+    var closest, distance, distances, intersection, intersections, j, k, len1, len2, p1, ref1, side, vec1, vec2;
+    intersections = [];
+    ref1 = medium.sides;
+    for (j = 0, len1 = ref1.length; j < len1; j++) {
+      side = ref1[j];
+      intersection = isIntersecting(line, side);
+      if (intersection != null) {
+        intersections.push(intersection);
+      }
+    }
+    p1 = side.p1;
+    vec1 = Victor(p1.x, p1.y);
+    distances = [];
+    for (k = 0, len2 = intersections.length; k < len2; k++) {
+      intersection = intersections[k];
+      vec2 = Victor(intersection.x, intersection.y);
+      distance = vec2.distanceSq(vec1);
+      distances.push({
+        distance: distance,
+        point: intersection
+      });
+    }
+    distances.sort(function(a, b) {
+      return a.distance - b.distance;
+    });
+    if (distances.length > 0) {
+      closest = distances[0];
+      line.p2 = closest.points;
+      return line.refresh();
+    }
+  };
+  extendLine = function() {};
+  return refractr(lineA, medium);
 });
