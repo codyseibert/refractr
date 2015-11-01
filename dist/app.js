@@ -1,5 +1,5 @@
 $(document).ready(function() {
-  var $svg, LightSource, Line, Medium, Point, drawIntersection, elem, isIntersecting, isLeft, j, len, medium, ref, refractr, sideA, sideB, sideC, sideD, svgEl;
+  var $svg, LightSource, Line, Medium, Point, drawIntersection, elem, isIntersecting, isLeft, j, len, line, medium, mid, ref, refractr, svgEl, triangleA, triangleB, triangleC;
   $svg = $('#svg');
   isLeft = function(a, b, c) {
     return ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)) > 0;
@@ -178,29 +178,31 @@ $(document).ready(function() {
     };
     return fun(line, medium);
   };
-  sideA = new Line(new Point(200, 200), new Point(300, 200), 'red');
-  sideB = new Line(new Point(300, 200), new Point(300, 300), 'green');
-  sideC = new Line(new Point(300, 300), new Point(200, 300), 'blue');
-  sideD = new Line(new Point(200, 300), new Point(200, 200), 'orange');
-  medium = new Medium(2.5, [sideA, sideB, sideC, sideD]);
-  ref = [sideA, sideB, sideC, sideD];
+  triangleA = new Line(new Point(400, 400), new Point(300, 200), 'cyan');
+  triangleB = new Line(new Point(500, 200), new Point(400, 400), 'cyan');
+  triangleC = new Line(new Point(300, 200), new Point(500, 200), 'cyan');
+  medium = new Medium(1.49, [triangleA, triangleB, triangleC]);
+  ref = [triangleA, triangleB, triangleC];
   for (j = 0, len = ref.length; j < len; j++) {
     elem = ref[j];
     $svg.append(elem.$);
+    mid = elem.midpoint.clone().add(elem.normal.clone().multiply(new Victor(30, 30)));
+    line = new Line(new Point(elem.midpoint.x, elem.midpoint.y), new Point(mid.x, mid.y), 'red');
+    $svg.append(line.$);
   }
   return $(document).click(function(event) {
-    var DIST, RAYS, angle, i, k, line, ref1, results, step, x, y;
+    var DIST, RAYS, angle, i, k, ref1, results, step, x, y;
     x = event.pageX;
     y = $svg.height() - event.pageY - 200;
     $svg.find('.ray').remove();
     angle = 0;
     DIST = 1000;
-    RAYS = 200;
+    RAYS = 500;
     step = 2 * Math.PI / RAYS;
     results = [];
     for (i = k = 0, ref1 = RAYS; 0 <= ref1 ? k < ref1 : k > ref1; i = 0 <= ref1 ? ++k : --k) {
       angle += step;
-      line = new Line(new Point(x, y), new Point(Math.cos(angle) * DIST, Math.sin(angle) * DIST));
+      line = new Line(new Point(x, y), new Point(x + Math.cos(angle) * DIST, y + Math.sin(angle) * DIST));
       $svg.append(line.$);
       line.$.addClass('ray');
       results.push(refractr(line, medium));
