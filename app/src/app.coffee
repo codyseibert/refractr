@@ -43,11 +43,19 @@ $(document).ready ->
     refresh: ->
       @$
         .attr 'x1', @p1.x
-        .attr 'y1', @p1.y
+        .attr 'y1', -@p1.y + 500
         .attr 'x2', @p2.x
-        .attr 'y2', @p2.y
+        .attr 'y2', -@p2.y + 500
 
-      @angle = Math.atan2 @p1.y - @p2.y, @p1.x - @p2.x
+      @angle = Math.atan2 @p2.y - @p1.y, @p2.x - @p1.x
+
+      @normal = new Victor(Math.cos(@angle), Math.sin(@angle))
+      @normal.rotate -Math.PI / 2
+      @normal.normalize()
+
+      @vec = new Victor(@p2.x, @p2.y)
+      @vec.subtract new Victor(@p1.x, @p1.y)
+      @vec.normalize()
 
   class Point
     constructor: (@x, @y) ->
@@ -55,7 +63,7 @@ $(document).ready ->
         .attr 'r', '5'
         .attr 'fill', 'white'
         .attr 'cx', @x
-        .attr 'cy', @y
+        .attr 'cy', -@y + 500
 
   class Medium
     constructor: (@coef, @sides) ->
@@ -63,50 +71,91 @@ $(document).ready ->
   class LightSource
     constructor: (@center, @numRays = 5, @theta = 0, @distsance = 5) ->
 
-  lineA = new Line new Point(100, 100), new Point(355, 300)
+  refractr = (line, medium) ->
+    seen = {}
 
-  sideA = new Line new Point(200, 200), new Point(300, 200), 'cyan'
-  sideB = new Line new Point(300, 200), new Point(300, 300), 'cyan'
-  sideC = new Line new Point(300, 300), new Point(200, 300), 'cyan'
-  sideD = new Line new Point(200, 300), new Point(200, 200), 'cyan'
+    fun = (line, medium) ->
+      seen[line.p1.x + ' ' + line.p1.y] = true
 
-  medium = new Medium 1.5, [sideA, sideB, sideC, sideD]
+      intersections = []
+      for side in medium.sides
+        intersection = isIntersecting line, side
+        if intersection?
+          intersections.push
+            intersection: intersection
+            side: side
+
+      p1 = line.p1
+      vec1 = new Victor p1.x, p1.y
+      distances = []
+
+      for intersection in intersections
+        inter = intersection.intersection
+        vec2 = new Victor inter.x, inter.y
+        distance = vec2.distanceSq vec1
+        distances.push
+          distance: distance
+          point: inter
+          side: intersection.side
+
+      distances.sort (a, b) ->
+        a.distance - b.distance
+
+      if distances.length > 1 and distances[0].point.x is line.p1.x and distances[0].point.y is line.p1.y
+        distances.splice 0, 1
+
+      if distances.length > 0 and distances[0].point.x isnt line.p1.x and distances[0].point.y isnt line.p1.y
+        closest = distances[0]
+
+        line.p2 = closest.point
+        line.refresh()
+        dot = closest.side.normal.dot(line.vec)
+        incident = Math.acos(dot)
+        if isNaN incident
+          incident = 0
+
+        if dot >= 0
+          theta2 = Math.asin(Math.sin(incident) * medium.coef)
+          newVec = closest.side.normal.clone().rotate -theta2
+          console.log 'here'
+        else
+          theta2 = Math.asin(Math.sin(incident) / medium.coef)
+          newVec = closest.side.normal.clone().multiply(new Victor(-1, -1)).rotate theta2
+          console.log 'there'
+
+        newVec.multiply(new Victor 1000000, 1000000)
+        p1 =
+          x: closest.point.x
+          y: closest.point.y
+        p2 =
+          x: closest.point.x + newVec.x
+          y: closest.point.y + newVec.y
+        newLine = new Line p1, p2
+        $svg.append newLine.$
+        if not seen[newLine.p1.x + ' ' + newLine.p1.y]?
+          fun newLine, medium
+    fun line, medium
+
+  # Create the medium
+  sideA = new Line new Point(0, 200), new Point(200, 0), 'red'
+  sideB = new Line new Point(500, 0), new Point(0, 500), 'green'
+  # sideC = new Line new Point(300, 300), new Point(200, 300), 'blue'
+  # sideD = new Line new Point(200, 300), new Point(200, 200), 'orange'
+  medium = new Medium 2.5, [sideA, sideB]
 
   for elem in [
-    lineA
     sideA
     sideB
-    sideC
-    sideD
+    # sideC
+    # sideD
   ]
     $svg.append elem.$
 
-  refractr = (line, medium) ->
-    intersections = []
-    for side in medium.sides
-      intersection = isIntersecting line, side
-      if intersection?
-        intersections.push intersection
-
-    p1 = side.p1
-    vec1 = Victor p1.x, p1.y
-    distances = []
-    for intersection in intersections
-      vec2 = Victor intersection.x, intersection.y
-      distance = vec2.distanceSq vec1
-      distances.push
-        distance: distance
-        point: intersection
-
-    distances.sort (a, b) ->
-      a.distance - b.distance
-
-    if distances.length > 0
-      closest = distances[0]
-      line.p2 = closest.points
-      line.refresh()
-
-  extendLine = ->
-
-
-  refractr lineA, medium
+  # Draw some random lines and refractr them
+  angle = 0
+  DIST = 1000
+  for i in [0...30]
+    angle += 0.05
+    line = new Line new Point(0, 0), new Point(Math.cos(angle) * DIST, Math.sin(angle) * DIST)
+    $svg.append line.$
+    refractr line, medium

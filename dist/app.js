@@ -1,5 +1,5 @@
 $(document).ready(function() {
-  var $svg, LightSource, Line, Medium, Point, drawIntersection, elem, extendLine, i, isIntersecting, len, lineA, medium, ref, refractr, sideA, sideB, sideC, sideD, svgEl;
+  var $svg, DIST, LightSource, Line, Medium, Point, angle, drawIntersection, elem, i, isIntersecting, j, k, len, line, medium, ref, refractr, results, sideA, sideB, svgEl;
   $svg = $('#svg');
   svgEl = function(tag) {
     return $(document.createElementNS('http://www.w3.org/2000/svg', tag));
@@ -34,9 +34,9 @@ $(document).ready(function() {
     }
   };
   Line = (function() {
-    function Line(p11, p2, color) {
+    function Line(p11, p21, color) {
       this.p1 = p11;
-      this.p2 = p2;
+      this.p2 = p21;
       if (color == null) {
         color = 'yellow';
       }
@@ -45,8 +45,14 @@ $(document).ready(function() {
     }
 
     Line.prototype.refresh = function() {
-      this.$.attr('x1', this.p1.x).attr('y1', this.p1.y).attr('x2', this.p2.x).attr('y2', this.p2.y);
-      return this.angle = Math.atan2(this.p1.y - this.p2.y, this.p1.x - this.p2.x);
+      this.$.attr('x1', this.p1.x).attr('y1', -this.p1.y + 500).attr('x2', this.p2.x).attr('y2', -this.p2.y + 500);
+      this.angle = Math.atan2(this.p2.y - this.p1.y, this.p2.x - this.p1.x);
+      this.normal = new Victor(Math.cos(this.angle), Math.sin(this.angle));
+      this.normal.rotate(-Math.PI / 2);
+      this.normal.normalize();
+      this.vec = new Victor(this.p2.x, this.p2.y);
+      this.vec.subtract(new Victor(this.p1.x, this.p1.y));
+      return this.vec.normalize();
     };
 
     return Line;
@@ -56,7 +62,7 @@ $(document).ready(function() {
     function Point(x, y) {
       this.x = x;
       this.y = y;
-      this.$ = svgEl('circle').attr('r', '5').attr('fill', 'white').attr('cx', this.x).attr('cy', this.y);
+      this.$ = svgEl('circle').attr('r', '5').attr('fill', 'white').attr('cx', this.x).attr('cy', -this.y + 500);
     }
 
     return Point;
@@ -82,49 +88,96 @@ $(document).ready(function() {
     return LightSource;
 
   })();
-  lineA = new Line(new Point(100, 100), new Point(355, 300));
-  sideA = new Line(new Point(200, 200), new Point(300, 200), 'cyan');
-  sideB = new Line(new Point(300, 200), new Point(300, 300), 'cyan');
-  sideC = new Line(new Point(300, 300), new Point(200, 300), 'cyan');
-  sideD = new Line(new Point(200, 300), new Point(200, 200), 'cyan');
-  medium = new Medium(1.5, [sideA, sideB, sideC, sideD]);
-  ref = [lineA, sideA, sideB, sideC, sideD];
-  for (i = 0, len = ref.length; i < len; i++) {
-    elem = ref[i];
+  refractr = function(line, medium) {
+    var fun, seen;
+    seen = {};
+    fun = function(line, medium) {
+      var closest, distance, distances, dot, incident, inter, intersection, intersections, j, k, len, len1, newLine, newVec, p1, p2, ref, side, theta2, vec1, vec2;
+      seen[line.p1.x + ' ' + line.p1.y] = true;
+      intersections = [];
+      ref = medium.sides;
+      for (j = 0, len = ref.length; j < len; j++) {
+        side = ref[j];
+        intersection = isIntersecting(line, side);
+        if (intersection != null) {
+          intersections.push({
+            intersection: intersection,
+            side: side
+          });
+        }
+      }
+      p1 = line.p1;
+      vec1 = new Victor(p1.x, p1.y);
+      distances = [];
+      for (k = 0, len1 = intersections.length; k < len1; k++) {
+        intersection = intersections[k];
+        inter = intersection.intersection;
+        vec2 = new Victor(inter.x, inter.y);
+        distance = vec2.distanceSq(vec1);
+        distances.push({
+          distance: distance,
+          point: inter,
+          side: intersection.side
+        });
+      }
+      distances.sort(function(a, b) {
+        return a.distance - b.distance;
+      });
+      if (distances.length > 1 && distances[0].point.x === line.p1.x && distances[0].point.y === line.p1.y) {
+        distances.splice(0, 1);
+      }
+      if (distances.length > 0 && distances[0].point.x !== line.p1.x && distances[0].point.y !== line.p1.y) {
+        closest = distances[0];
+        line.p2 = closest.point;
+        line.refresh();
+        dot = closest.side.normal.dot(line.vec);
+        incident = Math.acos(dot);
+        if (isNaN(incident)) {
+          incident = 0;
+        }
+        if (dot >= 0) {
+          theta2 = Math.asin(Math.sin(incident) * medium.coef);
+          newVec = closest.side.normal.clone().rotate(-theta2);
+          console.log('here');
+        } else {
+          theta2 = Math.asin(Math.sin(incident) / medium.coef);
+          newVec = closest.side.normal.clone().multiply(new Victor(-1, -1)).rotate(theta2);
+          console.log('there');
+        }
+        newVec.multiply(new Victor(1000000, 1000000));
+        p1 = {
+          x: closest.point.x,
+          y: closest.point.y
+        };
+        p2 = {
+          x: closest.point.x + newVec.x,
+          y: closest.point.y + newVec.y
+        };
+        newLine = new Line(p1, p2);
+        $svg.append(newLine.$);
+        if (seen[newLine.p1.x + ' ' + newLine.p1.y] == null) {
+          return fun(newLine, medium);
+        }
+      }
+    };
+    return fun(line, medium);
+  };
+  sideA = new Line(new Point(0, 200), new Point(200, 0), 'red');
+  sideB = new Line(new Point(500, 0), new Point(0, 500), 'green');
+  medium = new Medium(2.5, [sideA, sideB]);
+  ref = [sideA, sideB];
+  for (j = 0, len = ref.length; j < len; j++) {
+    elem = ref[j];
     $svg.append(elem.$);
   }
-  refractr = function(line, medium) {
-    var closest, distance, distances, intersection, intersections, j, k, len1, len2, p1, ref1, side, vec1, vec2;
-    intersections = [];
-    ref1 = medium.sides;
-    for (j = 0, len1 = ref1.length; j < len1; j++) {
-      side = ref1[j];
-      intersection = isIntersecting(line, side);
-      if (intersection != null) {
-        intersections.push(intersection);
-      }
-    }
-    p1 = side.p1;
-    vec1 = Victor(p1.x, p1.y);
-    distances = [];
-    for (k = 0, len2 = intersections.length; k < len2; k++) {
-      intersection = intersections[k];
-      vec2 = Victor(intersection.x, intersection.y);
-      distance = vec2.distanceSq(vec1);
-      distances.push({
-        distance: distance,
-        point: intersection
-      });
-    }
-    distances.sort(function(a, b) {
-      return a.distance - b.distance;
-    });
-    if (distances.length > 0) {
-      closest = distances[0];
-      line.p2 = closest.points;
-      return line.refresh();
-    }
-  };
-  extendLine = function() {};
-  return refractr(lineA, medium);
+  angle = 0;
+  DIST = 1000;
+  results = [];
+  for (i = k = 0; k < 30; i = ++k) {
+    angle += 0.05;
+    line = new Line(new Point(0, 0), new Point(Math.cos(angle) * DIST, Math.sin(angle) * DIST));
+    $svg.append(line.$);
+    results.push(refractr(line, medium));
+  }
+  return results;
 });
