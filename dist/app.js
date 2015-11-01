@@ -1,6 +1,9 @@
 $(document).ready(function() {
-  var $svg, DIST, LightSource, Line, Medium, Point, angle, drawIntersection, elem, i, isIntersecting, j, k, len, line, medium, ref, refractr, results, sideA, sideB, svgEl;
+  var $svg, LightSource, Line, Medium, Point, drawIntersection, elem, isIntersecting, isLeft, j, len, medium, ref, refractr, sideA, sideB, sideC, sideD, svgEl;
   $svg = $('#svg');
+  isLeft = function(a, b, c) {
+    return ((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)) > 0;
+  };
   svgEl = function(tag) {
     return $(document.createElementNS('http://www.w3.org/2000/svg', tag));
   };
@@ -45,6 +48,7 @@ $(document).ready(function() {
     }
 
     Line.prototype.refresh = function() {
+      var divide, full, p1;
       this.$.attr('x1', this.p1.x).attr('y1', -this.p1.y + 500).attr('x2', this.p2.x).attr('y2', -this.p2.y + 500);
       this.angle = Math.atan2(this.p2.y - this.p1.y, this.p2.x - this.p1.x);
       this.normal = new Victor(Math.cos(this.angle), Math.sin(this.angle));
@@ -52,16 +56,20 @@ $(document).ready(function() {
       this.normal.normalize();
       this.vec = new Victor(this.p2.x, this.p2.y);
       this.vec.subtract(new Victor(this.p1.x, this.p1.y));
-      return this.vec.normalize();
+      full = this.vec.clone();
+      p1 = new Victor(this.p1.x, this.p1.y);
+      this.vec.normalize();
+      divide = full.multiply(new Victor(0.5, 0.5));
+      return this.midpoint = p1.add(divide);
     };
 
     return Line;
 
   })();
   Point = (function() {
-    function Point(x, y) {
-      this.x = x;
-      this.y = y;
+    function Point(x1, y1) {
+      this.x = x1;
+      this.y = y1;
       this.$ = svgEl('circle').attr('r', '5').attr('fill', 'white').attr('cx', this.x).attr('cy', -this.y + 500);
     }
 
@@ -92,7 +100,7 @@ $(document).ready(function() {
     var fun, seen;
     seen = {};
     fun = function(line, medium) {
-      var closest, distance, distances, dot, incident, inter, intersection, intersections, j, k, len, len1, newLine, newVec, p1, p2, ref, side, theta2, vec1, vec2;
+      var closest, distance, distances, dot, incident, inter, intersection, intersections, j, k, len, len1, newLine, newVec, norm, p1, p2, ref, side, theta2, vec1, vec2;
       seen[line.p1.x + ' ' + line.p1.y] = true;
       intersections = [];
       ref = medium.sides;
@@ -123,10 +131,10 @@ $(document).ready(function() {
       distances.sort(function(a, b) {
         return a.distance - b.distance;
       });
-      if (distances.length > 1 && distances[0].point.x === line.p1.x && distances[0].point.y === line.p1.y) {
+      if (distances.length > 1 && Math.round(distances[0].point.x) === Math.round(line.p1.x) && Math.round(distances[0].point.y) === Math.round(line.p1.y)) {
         distances.splice(0, 1);
       }
-      if (distances.length > 0 && distances[0].point.x !== line.p1.x && distances[0].point.y !== line.p1.y) {
+      if (distances.length > 0 && Math.round(distances[0].point.x) !== Math.round(line.p1.x) && Math.round(distances[0].point.y) !== Math.round(line.p1.y)) {
         closest = distances[0];
         line.p2 = closest.point;
         line.refresh();
@@ -135,15 +143,20 @@ $(document).ready(function() {
         if (isNaN(incident)) {
           incident = 0;
         }
-        if (dot >= 0) {
-          theta2 = Math.asin(Math.sin(incident) * medium.coef);
-          newVec = closest.side.normal.clone().rotate(-theta2);
-          console.log('here');
-        } else {
+        norm = closest.side.normal.clone();
+        if (dot < 0) {
           theta2 = Math.asin(Math.sin(incident) / medium.coef);
-          newVec = closest.side.normal.clone().multiply(new Victor(-1, -1)).rotate(theta2);
-          console.log('there');
+          norm.multiply(new Victor(-1, -1));
+          if (isLeft(closest.point, new Victor(closest.point.x, closest.point.y).add(norm), line.p1)) {
+            theta2 *= -1;
+          }
+        } else {
+          theta2 = Math.asin(Math.sin(incident) * medium.coef);
+          if (isLeft(closest.point, new Victor(closest.point.x, closest.point.y).add(norm), line.p1)) {
+            theta2 *= -1;
+          }
         }
+        newVec = norm.rotate(theta2);
         newVec.multiply(new Victor(1000000, 1000000));
         p1 = {
           x: closest.point.x,
@@ -153,31 +166,45 @@ $(document).ready(function() {
           x: closest.point.x + newVec.x,
           y: closest.point.y + newVec.y
         };
-        newLine = new Line(p1, p2);
-        $svg.append(newLine.$);
-        if (seen[newLine.p1.x + ' ' + newLine.p1.y] == null) {
-          return fun(newLine, medium);
+        if (!isNaN(p1.x) && !isNaN(p1.y) && !isNaN(p2.x) && !isNaN(p2.y)) {
+          newLine = new Line(p1, p2);
+          $svg.append(newLine.$);
+          newLine.$.addClass('ray');
+          if (seen[newLine.p1.x + ' ' + newLine.p1.y] == null) {
+            return fun(newLine, medium);
+          }
         }
       }
     };
     return fun(line, medium);
   };
-  sideA = new Line(new Point(0, 200), new Point(200, 0), 'red');
-  sideB = new Line(new Point(500, 0), new Point(0, 500), 'green');
-  medium = new Medium(2.5, [sideA, sideB]);
-  ref = [sideA, sideB];
+  sideA = new Line(new Point(200, 200), new Point(300, 200), 'red');
+  sideB = new Line(new Point(300, 200), new Point(300, 300), 'green');
+  sideC = new Line(new Point(300, 300), new Point(200, 300), 'blue');
+  sideD = new Line(new Point(200, 300), new Point(200, 200), 'orange');
+  medium = new Medium(2.5, [sideA, sideB, sideC, sideD]);
+  ref = [sideA, sideB, sideC, sideD];
   for (j = 0, len = ref.length; j < len; j++) {
     elem = ref[j];
     $svg.append(elem.$);
   }
-  angle = 0;
-  DIST = 1000;
-  results = [];
-  for (i = k = 0; k < 30; i = ++k) {
-    angle += 0.05;
-    line = new Line(new Point(0, 0), new Point(Math.cos(angle) * DIST, Math.sin(angle) * DIST));
-    $svg.append(line.$);
-    results.push(refractr(line, medium));
-  }
-  return results;
+  return $(document).click(function(event) {
+    var DIST, RAYS, angle, i, k, line, ref1, results, step, x, y;
+    x = event.pageX;
+    y = $svg.height() - event.pageY - 200;
+    $svg.find('.ray').remove();
+    angle = 0;
+    DIST = 1000;
+    RAYS = 200;
+    step = 2 * Math.PI / RAYS;
+    results = [];
+    for (i = k = 0, ref1 = RAYS; 0 <= ref1 ? k < ref1 : k > ref1; i = 0 <= ref1 ? ++k : --k) {
+      angle += step;
+      line = new Line(new Point(x, y), new Point(Math.cos(angle) * DIST, Math.sin(angle) * DIST));
+      $svg.append(line.$);
+      line.$.addClass('ray');
+      results.push(refractr(line, medium));
+    }
+    return results;
+  });
 });

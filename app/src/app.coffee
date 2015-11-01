@@ -1,6 +1,9 @@
 $(document).ready ->
   $svg = $('#svg')
 
+  isLeft = (a, b, c) ->
+    ((b.x - a.x)*(c.y - a.y) - (b.y - a.y)*(c.x - a.x)) > 0
+
   svgEl = (tag) ->
     $ document.createElementNS 'http://www.w3.org/2000/svg', tag
 
@@ -55,7 +58,12 @@ $(document).ready ->
 
       @vec = new Victor(@p2.x, @p2.y)
       @vec.subtract new Victor(@p1.x, @p1.y)
+      full = @vec.clone()
+      p1 = new Victor(@p1.x, @p1.y)
       @vec.normalize()
+
+      divide = full.multiply(new Victor(0.5, 0.5))
+      @midpoint = p1.add(divide)
 
   class Point
     constructor: (@x, @y) ->
@@ -101,10 +109,10 @@ $(document).ready ->
       distances.sort (a, b) ->
         a.distance - b.distance
 
-      if distances.length > 1 and distances[0].point.x is line.p1.x and distances[0].point.y is line.p1.y
+      if distances.length > 1 and Math.round(distances[0].point.x) is Math.round(line.p1.x) and Math.round(distances[0].point.y) is Math.round(line.p1.y)
         distances.splice 0, 1
 
-      if distances.length > 0 and distances[0].point.x isnt line.p1.x and distances[0].point.y isnt line.p1.y
+      if distances.length > 0 and Math.round(distances[0].point.x) isnt Math.round(line.p1.x) and Math.round(distances[0].point.y) isnt Math.round(line.p1.y)
         closest = distances[0]
 
         line.p2 = closest.point
@@ -114,15 +122,19 @@ $(document).ready ->
         if isNaN incident
           incident = 0
 
-        if dot >= 0
-          theta2 = Math.asin(Math.sin(incident) * medium.coef)
-          newVec = closest.side.normal.clone().rotate -theta2
-          console.log 'here'
-        else
-          theta2 = Math.asin(Math.sin(incident) / medium.coef)
-          newVec = closest.side.normal.clone().multiply(new Victor(-1, -1)).rotate theta2
-          console.log 'there'
+        norm = closest.side.normal.clone()
 
+        if dot < 0 # outside of medium
+          theta2 = Math.asin(Math.sin(incident) / medium.coef)
+          norm.multiply(new Victor(-1, -1))
+          if isLeft closest.point, new Victor(closest.point.x, closest.point.y).add(norm), line.p1
+            theta2 *= -1
+        else # inside medium
+          theta2 = Math.asin(Math.sin(incident) * medium.coef)
+          if isLeft closest.point, new Victor(closest.point.x, closest.point.y).add(norm), line.p1
+            theta2 *= -1
+
+        newVec = norm.rotate theta2
         newVec.multiply(new Victor 1000000, 1000000)
         p1 =
           x: closest.point.x
@@ -130,32 +142,43 @@ $(document).ready ->
         p2 =
           x: closest.point.x + newVec.x
           y: closest.point.y + newVec.y
-        newLine = new Line p1, p2
-        $svg.append newLine.$
-        if not seen[newLine.p1.x + ' ' + newLine.p1.y]?
-          fun newLine, medium
+
+        if not isNaN(p1.x) and not isNaN(p1.y) and not isNaN(p2.x) and not isNaN(p2.y)
+          newLine = new Line p1, p2
+          $svg.append newLine.$
+          newLine.$.addClass 'ray'
+
+          if not seen[newLine.p1.x + ' ' + newLine.p1.y]?
+            fun newLine, medium
     fun line, medium
 
   # Create the medium
-  sideA = new Line new Point(0, 200), new Point(200, 0), 'red'
-  sideB = new Line new Point(500, 0), new Point(0, 500), 'green'
-  # sideC = new Line new Point(300, 300), new Point(200, 300), 'blue'
-  # sideD = new Line new Point(200, 300), new Point(200, 200), 'orange'
-  medium = new Medium 2.5, [sideA, sideB]
+  sideA = new Line new Point(200, 200), new Point(300, 200), 'red'
+  sideB = new Line new Point(300, 200), new Point(300, 300), 'green'
+  sideC = new Line new Point(300, 300), new Point(200, 300), 'blue'
+  sideD = new Line new Point(200, 300), new Point(200, 200), 'orange'
+  medium = new Medium 2.5, [sideA, sideB, sideC, sideD]
 
   for elem in [
     sideA
     sideB
-    # sideC
-    # sideD
+    sideC
+    sideD
   ]
     $svg.append elem.$
 
-  # Draw some random lines and refractr them
-  angle = 0
-  DIST = 1000
-  for i in [0...30]
-    angle += 0.05
-    line = new Line new Point(0, 0), new Point(Math.cos(angle) * DIST, Math.sin(angle) * DIST)
-    $svg.append line.$
-    refractr line, medium
+  $(document).click (event) ->
+    x = event.pageX
+    y = $svg.height() - event.pageY - 200
+    $svg.find('.ray').remove()
+
+    angle = 0
+    DIST = 1000
+    RAYS = 200
+    step = 2 * Math.PI / RAYS
+    for i in [0...RAYS]
+      angle += step
+      line = new Line new Point(x, y), new Point(Math.cos(angle) * DIST, Math.sin(angle) * DIST)
+      $svg.append line.$
+      line.$.addClass 'ray'
+      refractr line, medium
